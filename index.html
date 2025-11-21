@@ -1,0 +1,85 @@
+<script>
+    // (이전 코드 생략)
+    // ...
+
+    /**
+     * 입력된 댓글 텍스트를 파싱하여 당첨 번호와 일치하는 참여자 목록을 업데이트합니다.
+     * 닉네임 바로 밑에 번호가 오는 형식(닉네임\n1 2 3)에 최적화된 로직입니다.
+     * 닉네임과 번호 사이에 있는 작성 시간 등 불필요한 라인은 건너뛸 수 있도록 개선되었습니다.
+     */
+    function parseCommentsAndFilter() {
+        const text = commentInput.value.trim();
+        const winningNumbers = winningNumberInputs.map(input => input.value.trim()).filter(num => num !== '');
+
+        const allLines = text.split('\n').map(line => line.trim()).filter(line => line !== '');
+        
+        const tempParticipants = [];
+        let parsedCommentCount = 0;
+
+        const numberSequencePattern = /^(\d+(\s+\d+)*)$/; 
+        // 기존 패턴: '-Month Subscriber'
+        const subscriberPattern = /\s*-\s*[\w\s]+Subscriber/i;
+        const MAX_LOOKBACK = 5;
+
+        // --- ⭐ 이 부분이 수정되었습니다: 닉네임 클리닝 로직 보강 ---
+        // 닉네임 끝에 붙을 수 있는 불필요한 텍스트 패턴 (예: 1.5년, 6개월, [괄호] 등)
+        const cleanupPattern = /\s*(\d+(\.\d+)?년|\d+개월|\d+달|\d+주|\d+일|\s*\[.*?\]|\s*\([^\)]*\))$/g;
+        // -------------------------------------------------------------
+
+        for (let i = 0; i < allLines.length; i++) {
+            const currentLine = allLines[i];
+            
+            if (numberSequencePattern.test(currentLine)) {
+                
+                let foundAuthor = null;
+                
+                for (let j = 1; j <= MAX_LOOKBACK && i - j >= 0; j++) {
+                    const potentialAuthorLine = allLines[i - j];
+                    
+                    if (potentialAuthorLine && !numberSequencePattern.test(potentialAuthorLine)) {
+                        let cleanAuthor = potentialAuthorLine.replace(/[\[\]]/g, '').trim();
+                        
+                        // 기존 요청 사항 처리: '-Month Subscriber' 패턴 제거
+                        cleanAuthor = cleanAuthor.replace(subscriberPattern, '').trim();
+
+                        // --- ⭐ 닉네임 클리닝 로직 추가 ---
+                        // 1. 기간/단위 (1.5년, 6개월 등) 제거
+                        cleanAuthor = cleanAuthor.replace(cleanupPattern, '').trim();
+                        // 2. 최종적으로 남은 괄호나 불필요한 문자 제거 (한 번 더)
+                        cleanAuthor = cleanAuthor.replace(/[\[\]\(\)]/g, '').trim();
+                        // ----------------------------------
+
+                        foundAuthor = cleanAuthor;
+                        break;
+                    }
+                }
+
+                if (foundAuthor) {
+                    tempParticipants.push({ 
+                        author: foundAuthor, 
+                        content: currentLine 
+                    });
+                    parsedCommentCount++;
+                }
+            } 
+        }
+
+        const matchedAuthors = new Set();
+        
+        tempParticipants.forEach(p => {
+            if (winningNumbers.some(num => p.content === num)) {
+                matchedAuthors.add(p.author);
+            }
+        });
+        
+        eligibleParticipants = Array.from(matchedAuthors);
+
+        totalCountSpan.textContent = parsedCommentCount;
+        uniqueCountSpan.textContent = eligibleParticipants.length;
+
+        checkValidation();
+    }
+
+    // (나머지 코드 생략)
+    // ...
+</script>
