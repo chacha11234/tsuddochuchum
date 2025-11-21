@@ -1,11 +1,54 @@
 <script>
-    // (이전 코드 생략)
-    // ...
+    // --- 주요 변수 설정 ---
+    const commentInput = document.getElementById('comment-input');
+    const winningNumberInputs = [
+        document.getElementById('winning-number-1'),
+        document.getElementById('winning-number-2'),
+        document.getElementById('winning-number-3')
+    ];
+    const totalCountSpan = document.getElementById('total-count');
+    const uniqueCountSpan = document.getElementById('unique-count');
+    const drawButton = document.getElementById('draw-button');
+    const winnerList = document.getElementById('winner-list');
+    const initialMessage = document.getElementById('initial-message');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const closeModalButton = document.getElementById('close-modal');
+
+    let eligibleParticipants = [];
+
+    // --- 유효성 검사 및 UI 업데이트 함수 ---
+
+    /**
+     * 당첨 번호 입력란의 유효성을 검사하고 버튼 활성화 여부를 결정합니다.
+     */
+    function checkValidation() {
+        const winningNumbersCount = winningNumberInputs.filter(input => input.value.trim() !== '').length;
+        const isValid = winningNumbersCount > 0 && eligibleParticipants.length > 0;
+        
+        drawButton.disabled = !isValid;
+        drawButton.className = isValid 
+            ? 'w-full px-6 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition-colors' 
+            : 'w-full px-6 py-3 bg-gray-400 text-gray-700 font-bold rounded-xl cursor-not-allowed';
+    }
+
+    /**
+     * 모달창을 표시하는 함수
+     * @param {string} title 모달 제목
+     * @param {string} body 모달 내용
+     */
+    function showModal(title, body) {
+        modalTitle.textContent = title;
+        modalBody.innerHTML = body;
+        modal.classList.remove('hidden');
+    }
+
+    // --- 메인 파싱 및 필터링 로직 ---
 
     /**
      * 입력된 댓글 텍스트를 파싱하여 당첨 번호와 일치하는 참여자 목록을 업데이트합니다.
-     * 닉네임 바로 밑에 번호가 오는 형식(닉네임\n1 2 3)에 최적화된 로직입니다.
-     * 닉네임과 번호 사이에 있는 작성 시간 등 불필요한 라인은 건너뛸 수 있도록 개선되었습니다.
+     * 닉네임 바로 밑에 번호가 오는 형식(닉네임\n번호)에 최적화된 로직입니다.
      */
     function parseCommentsAndFilter() {
         const text = commentInput.value.trim();
@@ -16,70 +59,39 @@
         const tempParticipants = [];
         let parsedCommentCount = 0;
 
+        // 숫자로만 이루어진 라인을 찾는 패턴 (공백으로 구분된 숫자 허용)
         const numberSequencePattern = /^(\d+(\s+\d+)*)$/; 
-        // 기존 패턴: '-Month Subscriber'
-        const subscriberPattern = /\s*-\s*[\w\s]+Subscriber/i;
-        const MAX_LOOKBACK = 5;
 
-        // --- ⭐ 이 부분이 수정되었습니다: 닉네임 클리닝 로직 보강 ---
-        // 닉네임 끝에 붙을 수 있는 불필요한 텍스트 패턴 (예: 1.5년, 6개월, [괄호] 등)
-        const cleanupPattern = /\s*(\d+(\.\d+)?년|\d+개월|\d+달|\d+주|\d+일|\s*\[.*?\]|\s*\([^\)]*\))$/g;
-        // -------------------------------------------------------------
+        // 닉네임 뒤에 붙을 수 있는 불필요한 텍스트 패턴 (더 강력하게 수정)
+        // 기간 (1.5년, 6개월), 괄호 ([], ()), 구독자(Subscriber) 관련 문구 모두 포함
+        const cleanupPattern = /\s*(\[.*?\]|\(.*?\)|-?\s*[\w\s]*Subscriber|\d+(\.\d+)?[년개월달주일])\s*$/gi;
+
+        const MAX_LOOKBACK = 5; // 최대 5줄 위까지 닉네임을 찾음
 
         for (let i = 0; i < allLines.length; i++) {
             const currentLine = allLines[i];
             
+            // 현재 라인이 번호 시퀀스인지 확인
             if (numberSequencePattern.test(currentLine)) {
                 
                 let foundAuthor = null;
                 
+                // 위로 올라가면서 닉네임을 찾음 (최대 MAX_LOOKBACK 줄)
                 for (let j = 1; j <= MAX_LOOKBACK && i - j >= 0; j++) {
                     const potentialAuthorLine = allLines[i - j];
                     
+                    // 닉네임 후보 라인이 번호가 아닌 텍스트 라인이라면
                     if (potentialAuthorLine && !numberSequencePattern.test(potentialAuthorLine)) {
-                        let cleanAuthor = potentialAuthorLine.replace(/[\[\]]/g, '').trim();
                         
-                        // 기존 요청 사항 처리: '-Month Subscriber' 패턴 제거
-                        cleanAuthor = cleanAuthor.replace(subscriberPattern, '').trim();
+                        // 1. 대괄호/소괄호 및 불필요한 공백 제거
+                        let cleanAuthor = potentialAuthorLine.trim();
 
-                        // --- ⭐ 닉네임 클리닝 로직 추가 ---
-                        // 1. 기간/단위 (1.5년, 6개월 등) 제거
+                        // 2. 닉네임 클리닝 로직 적용 (기간/구독자 문구 제거)
                         cleanAuthor = cleanAuthor.replace(cleanupPattern, '').trim();
-                        // 2. 최종적으로 남은 괄호나 불필요한 문자 제거 (한 번 더)
+
+                        // 3. 최종적으로 남은 괄호나 불필요한 문자 제거 (한 번 더)
                         cleanAuthor = cleanAuthor.replace(/[\[\]\(\)]/g, '').trim();
-                        // ----------------------------------
-
-                        foundAuthor = cleanAuthor;
-                        break;
-                    }
-                }
-
-                if (foundAuthor) {
-                    tempParticipants.push({ 
-                        author: foundAuthor, 
-                        content: currentLine 
-                    });
-                    parsedCommentCount++;
-                }
-            } 
-        }
-
-        const matchedAuthors = new Set();
-        
-        tempParticipants.forEach(p => {
-            if (winningNumbers.some(num => p.content === num)) {
-                matchedAuthors.add(p.author);
-            }
-        });
-        
-        eligibleParticipants = Array.from(matchedAuthors);
-
-        totalCountSpan.textContent = parsedCommentCount;
-        uniqueCountSpan.textContent = eligibleParticipants.length;
-
-        checkValidation();
-    }
-
-    // (나머지 코드 생략)
-    // ...
-</script>
+                        
+                        // 닉네임이 빈 문자열이 아닌 경우에만 저장
+                        if (cleanAuthor) {
+                           foundAuthor = cleanAuthor;
